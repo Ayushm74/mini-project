@@ -360,6 +360,28 @@ def run_analysis(
 
     insights = _build_insights(loss_pct, loss_km2, mean_change, duration_label)
 
+    def _thumb(img: ee.Image, vis: dict[str, Any]) -> str:
+        pals = vis.get("palette") or []
+        pal = ",".join(str(p).replace("#", "") for p in pals)
+        return img.getThumbURL(
+            {
+                "min": vis["min"],
+                "max": vis["max"],
+                "bands": vis["bands"],
+                "palette": pal,
+                "region": region,
+                "dimensions": 1024,
+                "format": "png",
+            }
+        )
+
+    exports_png = {
+        "ndvi_before": _thumb(ndvi_before, vis_ndvi),
+        "ndvi_after": _thumb(ndvi_after, vis_ndvi),
+        "ndvi_change": _thumb(ndvi_change, vis_change),
+        "deforestation": _thumb(loss_layer, vis_loss),
+    }
+
     return {
         "center": {"lat": latitude, "lon": longitude},
         "radius_km": radius_km,
@@ -391,4 +413,5 @@ def run_analysis(
         "warning": warning,
         "hotspots_geojson": fc_geojson,
         "threshold_ndvi_change": NDVI_LOSS_THRESHOLD,
+        "exports": {"png": exports_png},
     }
