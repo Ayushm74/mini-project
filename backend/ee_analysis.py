@@ -13,14 +13,46 @@ import ee
 NDVI_LOSS_THRESHOLD = -0.15
 
 
+class EarthEngineConfigurationError(RuntimeError):
+    """Raised when Earth Engine is missing required project or auth setup."""
+
+
+def _normalize_ee_error(project_id: str, exc: Exception) -> EarthEngineConfigurationError:
+    message = str(exc)
+    lowered = message.lower()
+
+    if "has not been used in project" in lowered or "is disabled" in lowered:
+        return EarthEngineConfigurationError(
+            "Earth Engine is not enabled for the configured GCP project. "
+            "Set GEE_PROJECT_ID in backend/.env to a Google Cloud project with the "
+            "Earth Engine API enabled, then restart the backend."
+        )
+
+    if "google earth engine not initialized" in lowered or "credentials" in lowered:
+        return EarthEngineConfigurationError(
+            "Earth Engine credentials are not configured. Set GOOGLE_APPLICATION_CREDENTIALS "
+            "or authenticate this machine for Earth Engine, then restart the backend."
+        )
+
+    return EarthEngineConfigurationError(
+        f"Earth Engine initialization failed for project '{project_id}': {message}"
+    )
+
+
 def _init_ee(project_id: str) -> None:
     if not project_id:
-        raise ValueError("GEE_PROJECT_ID is not set. Configure .env or environment.")
+        raise EarthEngineConfigurationError(
+            "Earth Engine is not configured. Set GEE_PROJECT_ID in backend/.env."
+        )
     try:
         ee.Initialize(project=project_id)
-    except Exception:
-        ee.Authenticate()
-        ee.Initialize(project=project_id)
+    except Exception as first_error:
+        try:
+            ee.Authenticate()
+            ee.Initialize(project=project_id)
+            return
+        except Exception as second_error:
+            raise _normalize_ee_error(project_id, second_error) from second_error
 
 
 def _parse_date(s: str) -> dt.date:

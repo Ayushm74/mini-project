@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from config import settings
-from ee_analysis import run_analysis
+from ee_analysis import EarthEngineConfigurationError, run_analysis
 
 app = FastAPI(title="ForestWatch AI API", version="1.0.0")
 
@@ -51,6 +51,8 @@ def analyze(body: AnalyzeRequest) -> dict[str, Any]:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except EarthEngineConfigurationError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e!s}") from e
 
@@ -75,5 +77,7 @@ def export_geojson(body: AnalyzeRequest) -> dict[str, Any]:
         return gj
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except EarthEngineConfigurationError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
