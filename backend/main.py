@@ -16,12 +16,16 @@ from ee_analysis import (
 
 def _earth_engine_error_detail(message: str) -> dict[str, str]:
     pid = settings.gee_project_id
-    api_lib = "https://console.cloud.google.com/apis/library/earthengine.googleapis.com"
+    # Same destination Google cites in EE errors (API overview → Enable).
+    ee_api_overview = "https://console.cloud.google.com/apis/api/earthengine.googleapis.com/overview"
+    ee_register = "https://console.cloud.google.com/earth-engine/configuration"
     return {
         "code": "EARTH_ENGINE_CONFIG",
         "message": message,
         "project_id": pid,
-        "enable_earth_engine_api": f"{api_lib}?project={pid}" if pid else api_lib,
+        "enable_earth_engine_api": f"{ee_api_overview}?project={pid}" if pid else ee_api_overview,
+        "register_earth_engine_project": f"{ee_register}?project={pid}" if pid else ee_register,
+        "earth_engine_access_docs": "https://developers.google.com/earth-engine/guides/access",
         "google_cloud_console": (
             f"https://console.cloud.google.com/home/dashboard?project={pid}"
             if pid

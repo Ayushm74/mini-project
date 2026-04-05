@@ -31,6 +31,7 @@ def _is_ee_api_or_project_misconfiguration(exc: Exception) -> bool:
         "billing has not been enabled",
         "access not configured",
         "earth engine api",
+        "not registered to use earth engine",
     )
     return any(n in t for n in needles)
 
@@ -53,6 +54,14 @@ def _looks_like_missing_credentials(exc: Exception) -> bool:
 def _normalize_ee_error(project_id: str, exc: Exception) -> EarthEngineConfigurationError:
     message = str(exc)
     lowered = message.lower()
+
+    if "not registered to use earth engine" in lowered:
+        return EarthEngineConfigurationError(
+            "This Google Cloud project is not registered for Earth Engine yet. After the Earth "
+            "Engine API is enabled, you must complete project registration (commercial or "
+            "non-commercial) in Cloud Console. "
+            f"Project: {project_id}. Raw error: {message}"
+        )
 
     if _is_ee_api_or_project_misconfiguration(exc):
         return EarthEngineConfigurationError(
