@@ -17,21 +17,58 @@ class EarthEngineConfigurationError(RuntimeError):
     """Raised when Earth Engine is missing required project or auth setup."""
 
 
+def _is_ee_api_or_project_misconfiguration(exc: Exception) -> bool:
+    """True when enabling the API / fixing the Cloud project is the fix (not re-auth)."""
+    t = str(exc).lower()
+    needles = (
+        "has not been used in project",
+        "is disabled",
+        "has not been enabled",
+        "api has not been enabled",
+        "service_disabled",
+        "earthengine.googleapis.com",
+        "permission_denied",
+        "billing has not been enabled",
+        "access not configured",
+        "earth engine api",
+    )
+    return any(n in t for n in needles)
+
+
+def _looks_like_missing_credentials(exc: Exception) -> bool:
+    t = str(exc).lower()
+    return any(
+        x in t
+        for x in (
+            "could not find default credentials",
+            "reauthentication is needed",
+            "not authenticated",
+            "application default credentials",
+            "refresh token",
+            "unable to authenticate",
+        )
+    )
+
+
 def _normalize_ee_error(project_id: str, exc: Exception) -> EarthEngineConfigurationError:
     message = str(exc)
     lowered = message.lower()
 
-    if "has not been used in project" in lowered or "is disabled" in lowered:
+    if _is_ee_api_or_project_misconfiguration(exc):
         return EarthEngineConfigurationError(
-            "Earth Engine is not enabled for the configured GCP project. "
-            "Set GEE_PROJECT_ID in backend/.env to a Google Cloud project with the "
-            "Earth Engine API enabled, then restart the backend."
+            "Google Cloud returned an error for this project—usually the Earth Engine API is not "
+            "enabled yet, billing is off, or the account does not have access. "
+            f"Project: {project_id}. Raw error: {message}"
         )
 
-    if "google earth engine not initialized" in lowered or "credentials" in lowered:
+    if "google earth engine not initialized" in lowered or (
+        "credentials" in lowered and not _is_ee_api_or_project_misconfiguration(exc)
+    ):
         return EarthEngineConfigurationError(
-            "Earth Engine credentials are not configured. Set GOOGLE_APPLICATION_CREDENTIALS "
-            "or authenticate this machine for Earth Engine, then restart the backend."
+            "Earth Engine credentials are missing or invalid. Run `earthengine authenticate` in a "
+            "terminal (or set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON with EE "
+            "access), then restart the backend. "
+            f"Raw error: {message}"
         )
 
     return EarthEngineConfigurationError(
@@ -47,12 +84,35 @@ def _init_ee(project_id: str) -> None:
     try:
         ee.Initialize(project=project_id)
     except Exception as first_error:
+        if _is_ee_api_or_project_misconfiguration(first_error):
+            raise _normalize_ee_error(project_id, first_error) from first_error
+        if not _looks_like_missing_credentials(first_error):
+            raise _normalize_ee_error(project_id, first_error) from first_error
         try:
             ee.Authenticate()
             ee.Initialize(project=project_id)
-            return
         except Exception as second_error:
             raise _normalize_ee_error(project_id, second_error) from second_error
+
+
+def diagnose_earth_engine(project_id: str) -> dict[str, Any]:
+    """Lightweight check for /diagnostics (does not run analysis)."""
+    out: dict[str, Any] = {
+        "project_id": project_id or None,
+        "ok": False,
+        "raw_error": None,
+    }
+    if not project_id:
+        out["hint"] = "Set GEE_PROJECT_ID in backend/.env"
+        return out
+    try:
+        ee.Initialize(project=project_id)
+        out["ok"] = True
+        out["message"] = "Earth Engine initialized successfully for this project."
+    except Exception as e:
+        out["raw_error"] = str(e)
+        out["message"] = str(_normalize_ee_error(project_id, e))
+    return out
 
 
 def _parse_date(s: str) -> dt.date:
